@@ -1,0 +1,7 @@
+url:    "example.com"
+region: "ams3"
+key:    "yourkey"
+secret: "yoursecret"
+bucket: "yourbucket"
+dir: "yourdir"
+file: "yourfile"
