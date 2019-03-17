@@ -5,6 +5,7 @@ import (
 	"github.com/juju/errors"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
 
@@ -23,40 +24,64 @@ type Config struct {
 
 func main() {
 
+	cfg := setupConfig()
+	fmt.Printf("Uploading %s, with cfg %v\n", cfg.File, cfg)
+
+	err := uploadFile(cfg)
+	exitIfErr(err)
+	fmt.Printf("Done\n")
+}
+
+func exitIfErr(err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Err: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func setupConfig() Config {
 	// Config
 	var cfg Config
-	viper.SetConfigName("config")
+	ex, err := os.Executable()
+	exitIfErr(err)
+
+	viper.AddConfigPath(filepath.Dir(ex))
 	viper.AddConfigPath(".")
-	err := viper.ReadInConfig()
+	viper.SetConfigName("bim")
+	err = viper.ReadInConfig()
 	if err != nil {
-		fmt.Println("No config file found")
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+
+			var defaultConfigPath = ex +".yaml"
+			fmt.Println("Config file not found, creating default config as %s", defaultConfigPath)
+
+			b, err := yaml.Marshal(cfg)
+			exitIfErr(errors.Annotatef(err, "while marshalling config to file"))
+
+			f, err := os.Create(defaultConfigPath)
+			exitIfErr(errors.Annotatef(err, "while opening file %s to write config", defaultConfigPath))
+
+			_, err = f.Write(b)
+			exitIfErr(errors.Annotatef(err, "while writing config to file %s", defaultConfigPath))
+
+		}
+		exitIfErr(errors.Annotatef(err, "while reading config"))
 	}
 
-	pflag.String("url", "", "repository url")
-	pflag.String("region", "", "repository region")
-	pflag.String("key", "", "repository key")
-	pflag.String("secret", "", "repository secret")
-	pflag.String("bucket", "", "bucket name")
-	pflag.String("dir", "", "dir in repository")
-	pflag.String("file", "", "file to upload")
+	pflag.StringP("url", "u", "", "repository url")
+	pflag.StringP("region", "r","", "repository region")
+	pflag.StringP("key", "k", "", "repository key")
+	pflag.StringP("secret", "s","", "repository secret")
+	pflag.StringP("bucket", "b", "", "bucket name")
+	pflag.StringP("dir", "d", "", "dir in repository")
+	pflag.StringP("file", "f", "", "file to upload")
 
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
 	err = viper.Unmarshal(&cfg)
-	exitIfErrWithConfig(err, cfg)
+	exitIfErr(err)
 
-	fmt.Printf("Uploading %s\n", cfg.File)
-
-	err = uploadFile(cfg)
-	exitIfErrWithConfig(err, cfg)
-	fmt.Printf("Done\n")
-}
-
-func exitIfErrWithConfig(err error, cfg Config) {
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Err: %v", err)
-		os.Exit(1)
-	}
+	return cfg
 }
 
 func uploadFile(cfg Config) error {
